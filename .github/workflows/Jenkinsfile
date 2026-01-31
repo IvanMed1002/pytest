@@ -1,1 +1,57 @@
 
+pipeline {
+    agent any
+
+    tools {
+        python 'Python3'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'python -m pip install --upgrade pip'
+                sh 'pip install -r requirements.txt'
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh 'coverage run -m pytest'
+            }
+        }
+
+        stage('Generate Coverage Report') {
+            steps {
+                sh 'coverage xml'
+                sh 'coverage report'
+            }
+        }
+
+        stage('Package Artifact') {
+            steps {
+                sh 'zip -r math_utils_artifact.zip math_utils.py'
+            }
+        }
+    }
+
+    post {
+        always {
+            junit 'coverage.xml'
+            archiveArtifacts artifacts: '*.zip', fingerprint: true
+        }
+
+        success {
+            echo 'Build SUCCESS ✅'
+        }
+
+        failure {
+            echo 'Build FAILED ❌'
+        }
+    }
+}
