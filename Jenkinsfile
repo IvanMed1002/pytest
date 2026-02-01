@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        // Where we will store reports
+        REPORT_DIR = "reports"
+        VENV_DIR   = ".venv"
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -8,54 +14,83 @@ pipeline {
             }
         }
 
-        stage('Install') {
+        stage('Setup Python venv') {
             steps {
-                bat 'python --version'
-                bat 'python -m pip install --upgrade pip'
-                bat 'pip install -r requirements.txt'
+                bat """
+                python --version
+                python -m venv %VENV_DIR%
+                call %VENV_DIR%\\Scripts\\activate
+                python -m pip install --upgrade pip
+                pip install -r requirements.txt
+                """
             }
         }
 
-        stage('Tests') {
+        stage('Static Analysis (Lint + Security)') {
             steps {
-                bat 'if not exist reports mkdir reports'
-                bat 'python -m pytest --junitxml=reports\\junit.xml'
+                bat """
+                call %VENV_DIR%\\Scripts\\activate
+                if not exist %REPORT_DIR% mkdir %REPORT_DIR%
+
+                rem Lint (style / basic code issues)
+                flake8 . --count --statistics --exit-zero > %REPORT_DIR%\\flake8.txt
+
+                rem Security scan (common Python security issues)
+                bandit -r . -f txt -o %REPORT_DIR%\\bandit.txt || exit /b 0
+                """
             }
         }
 
-        stage('Code Coverage') {
+        stage('Test + Coverage') {
             steps {
-                bat 'pip show coverage || pip install coverage'
-                bat 'coverage run -m pytest'
-                bat 'coverage xml -o reports\\coverage.xml'
-                bat 'coverage report'
+                bat """
+                call %VENV_DIR%\\Scripts\\activate
+                if not exist %REPORT_DIR% mkdir %REPORT_DIR%
+
+                rem JUnit XML for Jenkins + Coverage XML
+                pytest -q ^
+                  --junitxml=%REPORT_DIR%\\junit.xml ^
+                  --cov=. ^
+                  --cov-report=xml:%REPORT_DIR%\\coverage.xml ^
+                  --cov-report=html:%REPORT_DIR%\\htmlcov
+                """
             }
         }
 
-        stage('Static Code Analysis') {
+        stage('Build Artifact') {
             steps {
-                bat 'pip show pylint || pip install pylint'
-                bat 'pylint *.py || exit /b 0'
-            }
-        }
+                bat """
+                call %VENV_DIR%\\Scripts\\activate
 
-        stage('Artifact') {
-            steps {
-                bat 'powershell -Command "Compress-Archive -Path *.py -DestinationPath artifact.zip -Force"'
+                rem Option A (simple): zip the project as an artifact
+                powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath %REPORT_DIR%\\project_artifact.zip -Force"
+
+                rem Option B (real Python artifact): build wheel/sdist (requires 'build' in requirements.txt)
+                python -m build || exit /b 0
+                """
             }
         }
     }
 
     post {
         always {
-            junit 'reports/junit.xml'
-            archiveArtifacts artifacts: 'reports/**, artifact.zip', fingerprint: true
+            // Publish test results in Jenkins (JUnit plugin)
+            junit allowEmptyResults: true, testResults: "${REPORT_DIR}/junit.xml"
+
+            // Archive reports + artifacts so you can download them
+            archiveArtifacts artifacts: "${REPORT_DIR}/**", allowEmptyArchive: true
+            archiveArtifacts artifacts: "dist/**", allowEmptyArchive: true
+
+            // Nice-to-have: show flake8/bandit logs in Jenkins build artifacts
+            echo "Build finished. Reports archived."
         }
+
         success {
-            echo 'SUCCESS ✅'
+            echo "✅ SUCCESS: Tests passed and reports published."
         }
+
         failure {
-            echo 'FAILED ❌'
+            echo "❌ FAILURE: Something failed. Check console output + archived reports."
         }
     }
 }
