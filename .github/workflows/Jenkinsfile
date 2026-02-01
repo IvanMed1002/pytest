@@ -51,7 +51,13 @@ pipeline {
     }
 }
 
-coverage run -m pytest
-coverage report
-coverage xml
+stage('Code Coverage') {
+    steps {
+        sh '''
+        coverage run -m pytest
+        coverage report
+        coverage xml
+        '''
+    }
+}
 
