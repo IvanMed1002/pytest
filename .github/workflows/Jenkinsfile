@@ -1,10 +1,5 @@
-
 pipeline {
     agent any
-
-    tools {
-        python 'Python3'
-    }
 
     stages {
         stage('Checkout') {
@@ -13,45 +8,45 @@ pipeline {
             }
         }
 
+        stage('Verify Tools') {
+            steps {
+                bat 'git --version'
+                bat 'python --version'
+                bat 'pip --version'
+                bat 'where python'
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
-                sh 'python -m pip install --upgrade pip'
-                sh 'pip install -r requirements.txt'
+                bat 'python -m pip install --upgrade pip'
+                bat 'pip install -r requirements.txt'
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Tests + Coverage') {
             steps {
-                sh 'coverage run -m pytest'
-            }
-        }
-
-        stage('Generate Coverage Report') {
-            steps {
-                sh 'coverage xml'
-                sh 'coverage report'
+                bat 'if not exist reports mkdir reports'
+                bat 'coverage run -m pytest --junitxml=reports\\junit.xml'
+                bat 'coverage xml -o reports\\coverage.xml'
+                bat 'coverage report'
             }
         }
 
         stage('Package Artifact') {
             steps {
-                sh 'zip -r math_utils_artifact.zip math_utils.py'
+                bat 'powershell -Command "Compress-Archive -Path *.py -DestinationPath math_utils_artifact.zip -Force"'
             }
         }
     }
 
     post {
         always {
-            junit 'coverage.xml'
-            archiveArtifacts artifacts: '*.zip', fingerprint: true
-        }
+            // publish unit test results in Jenkins
+            junit 'reports/junit.xml'
 
-        success {
-            echo 'Build SUCCESS ✅'
-        }
-
-        failure {
-            echo 'Build FAILED ❌'
+            // save reports + zip as build artifacts
+            archiveArtifacts artifacts: 'reports/**, math_utils_artifact.zip', fingerprint: true
         }
     }
 }
