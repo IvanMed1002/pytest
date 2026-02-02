@@ -91,6 +91,11 @@ pipeline {
 
         failure {
             echo "❌ FAILURE: Something failed. Check console output + archived reports."
+        failure {
+            emailext(
+                subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build failed. Check ${env.BUILD_URL}",
+                to: "youremail@example.com"
+            )
         }
-    }
-}
+        
