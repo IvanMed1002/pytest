@@ -2,9 +2,11 @@ pipeline {
     agent any
 
     environment {
-        // Where we will store reports
         REPORT_DIR = "reports"
         VENV_DIR   = ".venv"
+        // Optional: set this if Jenkins can't find python in PATH
+        // PY = "C:\\Users\\Ivan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+        PY = "python"
     }
 
     stages {
@@ -17,8 +19,8 @@ pipeline {
         stage('Setup Python venv') {
             steps {
                 bat """
-                python --version
-                python -m venv %VENV_DIR%
+                %PY% --version
+                %PY% -m venv %VENV_DIR%
                 call %VENV_DIR%\\Scripts\\activate
                 python -m pip install --upgrade pip
                 pip install -r requirements.txt
@@ -32,10 +34,10 @@ pipeline {
                 call %VENV_DIR%\\Scripts\\activate
                 if not exist %REPORT_DIR% mkdir %REPORT_DIR%
 
-                rem Lint (style / basic code issues)
+                rem Lint
                 flake8 . --count --statistics --exit-zero > %REPORT_DIR%\\flake8.txt
 
-                rem Security scan (common Python security issues)
+                rem Security scan
                 bandit -r . -f txt -o %REPORT_DIR%\\bandit.txt || exit /b 0
                 """
             }
@@ -47,7 +49,6 @@ pipeline {
                 call %VENV_DIR%\\Scripts\\activate
                 if not exist %REPORT_DIR% mkdir %REPORT_DIR%
 
-                rem JUnit XML for Jenkins + Coverage XML
                 pytest -q ^
                   --junitxml=%REPORT_DIR%\\junit.xml ^
                   --cov=. ^
@@ -62,10 +63,9 @@ pipeline {
                 bat """
                 call %VENV_DIR%\\Scripts\\activate
 
-                rem Option A (simple): zip the project as an artifact
                 powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath %REPORT_DIR%\\project_artifact.zip -Force"
 
-                rem Option B (real Python artifact): build wheel/sdist (requires 'build' in requirements.txt)
+                rem Build wheel/sdist if 'build' is installed
                 python -m build || exit /b 0
                 """
             }
@@ -74,28 +74,21 @@ pipeline {
 
     post {
         always {
-            // Publish test results in Jenkins (JUnit plugin)
-            junit allowEmptyResults: true, testResults: "${REPORT_DIR}/junit.xml"
-
-            // Archive reports + artifacts so you can download them
-            archiveArtifacts artifacts: "${REPORT_DIR}/**", allowEmptyArchive: true
+            junit allowEmptyResults: true, testResults: "reports/junit.xml"
+            archiveArtifacts artifacts: "reports/**", allowEmptyArchive: true
             archiveArtifacts artifacts: "dist/**", allowEmptyArchive: true
-
-            // Nice-to-have: show flake8/bandit logs in Jenkins build artifacts
             echo "Build finished. Reports archived."
         }
 
-   post {
-    success {
-        slackSend(
-            message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}",
-            channel: "#all-project"
-        )
-    }
-    failure {
-        slackSend(
-            message: "❌ FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}",
-            channel: "#all-project"
-        )
+        success {
+            echo "SUCCESS ✅"
+            // Slack only works if Slack plugin is installed + configured in Jenkins
+            // slackSend(message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}", channel: "#all-project")
+        }
+
+        failure {
+            echo "FAILED ❌"
+            // slackSend(message: "❌ FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}", channel: "#all-project")
+        }
     }
 }
