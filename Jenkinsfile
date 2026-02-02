@@ -85,17 +85,17 @@ pipeline {
             echo "Build finished. Reports archived."
         }
 
-        success {
-            echo "✅ SUCCESS: Tests passed and reports published."
-        }
-
-        failure {
-            echo "❌ FAILURE: Something failed. Check console output + archived reports."
-        failure {
-            emailext(
-                subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Build failed. Check ${env.BUILD_URL}",
-                to: "youremail@example.com"
-            )
-        }
-        
+   post {
+    success {
+        slackSend(
+            message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}",
+            channel: "#new-channel"
+        )
+    }
+    failure {
+        slackSend(
+            message: "❌ FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n${env.BUILD_URL}",
+            channel: "#new-channel"
+        )
+    }
+}
