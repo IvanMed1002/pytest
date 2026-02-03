@@ -16,17 +16,18 @@ pipeline {
             }
         }
 
-        stage('Setup Python venv') {
-            steps {
-                bat """
-                %PY% --version
-                %PY% -m venv %VENV_DIR%
-                call %VENV_DIR%\\Scripts\\activate
-                python -m pip install --upgrade pip
-                pip install -r requirements.txt
-                """
-            }
-        }
+     stage('Setup Python venv') {
+         steps {
+             bat '''
+             py --version
+             py -m venv .venv
+             call .venv\\Scripts\\activate
+             py -m pip install --upgrade pip
+             py -m pip install -r requirements.txt
+             '''
+         }
+     }    
+
 
         stage('Static Analysis (Lint + Security)') {
             steps {
